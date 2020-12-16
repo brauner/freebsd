@@ -1338,8 +1338,20 @@ kern_close(struct thread *td, int fd)
 	return (closefp(fdp, fd, fp, td, 1));
 }
 
+static void
+kern_cloexec(struct filedesc *fdp, int fd)
+{
+	struct filedescent *fde;
+
+	FILEDESC_XLOCK(fdp);
+	fde = fdeget_locked(fdp, fd);
+	if (fde != NULL)
+		fde->fde_flags |= UF_EXCLOSE;
+	FILEDESC_XUNLOCK(fdp);
+}
+
 int
-kern_close_range(struct thread *td, u_int lowfd, u_int highfd)
+kern_close_range(struct thread *td, u_int lowfd, u_int highfd, u_int flags)
 {
 	struct filedesc *fdp;
 	int fd, ret, lastfile;
@@ -1372,7 +1384,10 @@ kern_close_range(struct thread *td, u_int lowfd, u_int highfd)
 	for (fd = lowfd; fd <= highfd; fd++) {
 		if (fdp->fd_ofiles[fd].fde_file != NULL) {
 			FILEDESC_SUNLOCK(fdp);
-			(void)kern_close(td, fd);
+			if (flags & CLOSE_RANGE_CLOEXEC)
+				kern_cloexec(fdp, fd);
+			else
+				(void)kern_close(td, fd);
 			FILEDESC_SLOCK(fdp);
 		}
 	}
@@ -1392,10 +1407,9 @@ int
 sys_close_range(struct thread *td, struct close_range_args *uap)
 {
 
-	/* No flags currently defined */
-	if (uap->flags != 0)
+	if (uap->flags & ~CLOSE_RANGE_CLOEXEC)
 		return (EINVAL);
-	return (kern_close_range(td, uap->lowfd, uap->highfd));
+	return (kern_close_range(td, uap->lowfd, uap->highfd, uap->flags));
 }
 
 #ifdef COMPAT_FREEBSD12
@@ -1420,7 +1434,7 @@ freebsd12_closefrom(struct thread *td, struct freebsd12_closefrom_args *uap)
 	 * closefrom(0) which closes all files.
 	 */
 	lowfd = MAX(0, uap->lowfd);
-	return (kern_close_range(td, lowfd, ~0U));
+	return (kern_close_range(td, lowfd, ~0U, 0));
 }
 #endif	/* COMPAT_FREEBSD12 */
 

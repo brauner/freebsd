@@ -158,6 +158,11 @@
 #define	_PC_ACL_NFS4		64
 #endif
 
+#if __BSD_VISIBLE
+/* Set the FD_CLOEXEC bit instead of closing the file descriptor. */
+#define CLOSE_RANGE_CLOEXEC	(1U << 2)
+#endif
+
 /* From OpenSolaris, used by SEEK_DATA/SEEK_HOLE. */
 #define	_PC_MIN_HOLE_SIZE	21
 
